@@ -9,25 +9,20 @@ import os
 import sys
 
 # Configuration
-DATASET_PATH = 'spotify_millsongdata.csv'  # Default name for this dataset
+DATASET_PATH = 'lyrics_10k.csv'  # Switch to the larger dataset
 SAMPLE_SIZE = 50000  # Number of songs to use (max)
 
 def setup_nltk():
     """Download necessary NLTK data."""
-    try:
-        nltk.data.find('tokenizers/punkt')
-        nltk.data.find('corpora/stopwords')
-    except LookupError:
-        print("Downloading NLTK data...")
-        nltk.download('punkt', quiet=True)
-        nltk.download('stopwords', quiet=True)
-        print("NLTK data downloaded.")
+    print("Setting up NLTK...")
+    nltk.download('punkt', quiet=True)
+    nltk.download('stopwords', quiet=True)
 
 def load_data(path):
     """Load and preprocess the dataset."""
     if not os.path.exists(path):
         print(f"Error: Dataset not found at {path}")
-        print("Please ensure the 'spotify_millsongdata.csv' file is in the current directory.")
+        print("Please ensure the 'lyrics_10k.csv' or 'spotify_millsongdata.csv' file is in the current directory.")
         return None
 
     print(f"Loading dataset from {path}...")
@@ -37,20 +32,33 @@ def load_data(path):
         print(f"Error reading CSV: {e}")
         return None
 
+    # Column mapping to standardize names
+    # lyrics_10k.csv has 'artists', 'song', 'lyrics'
+    # spotify_millsongdata.csv has 'artist', 'song', 'text'
+    column_mapping = {
+        'artists': 'artist',
+        'lyrics': 'text',
+        'song_name': 'song', # potential variation
+        'track_name': 'song' # potential variation
+    }
+    df.rename(columns=column_mapping, inplace=True)
+
     # Check for required columns
     required_cols = ['artist', 'song', 'text']
-    curr_cols = [c.lower() for c in df.columns]
     
-    # Map columns if slightly different (common in variants of this dataset)
-    # The millsions dataset usually has 'artist', 'song', 'text'
-    # But let's be robust
-    
-    if 'text' not in df.columns:
-        # try to find a column that looks like lyrics
-        print("Column 'text' not found. Available columns:", df.columns)
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        print(f"Error: Missing required columns: {missing_cols}")
+        print("Available columns:", df.columns)
         return None
 
     print(f"Dataset loaded. Shape: {df.shape}")
+    
+    # Check if dataset is dangerously small
+    if len(df) < 100:
+        print("\n[WARNING] Dataset is very small (fewer than 100 songs).")
+        print("Search results might be poor or irrelevant.")
+        print("Please ensure you have a full dataset file.\n")
     
     # Sample if too large to speed up demo
     if len(df) > SAMPLE_SIZE:
@@ -66,6 +74,9 @@ def preprocess_text(text):
     
     # Lowercase
     text = text.lower()
+    
+    # Replace hyphens with spaces to preserve words in "jewel-studded" etc.
+    text = text.replace('-', ' ')
     
     # Tokenize
     try:
@@ -155,8 +166,15 @@ def main():
                 continue
                 
             results = search_song(query, vectorizer, tfidf_matrix, df)
+            
+            found_match = False
             for i, res in enumerate(results):
-                print(f"{i+1}. {res['song']} by {res['artist']} (Score: {res['score']:.4f})")
+                if res['score'] > 0:
+                    found_match = True
+                    print(f"{i+1}. {res['song']} by {res['artist']} (Score: {res['score']:.4f})")
+            
+            if not found_match:
+                print("No matches found.")
         except KeyboardInterrupt:
             break
             
